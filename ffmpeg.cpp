@@ -1,7 +1,5 @@
 #include "ffmpeg.h"
 
-
-
 ffmpeg::ffmpeg()
 {
 }
@@ -17,34 +15,45 @@ void ffmpeg::initffmpeg()
 	avcodec_register_all();
 	avdevice_register_all();
 	avformat_network_init();
+	rec = 0;
+	inContext = NULL;
+	outContext = NULL;
+	audioCodec = NULL;
+	videoCodec = NULL;
+	audioContext = NULL;
+	videoContext = NULL;
+	outFormat = NULL;
+	inFormat = NULL;
+	swsContext = NULL;
+	audioStream = -1;
+	videoStream = -1;
 }
 
 int ffmpeg::OpenUrl(char * filename)
 {
-	int rec = 0;
-	AVFormatContext * inContext = NULL, *outContext = NULL;
-	AVCodec *audioCodec = NULL, *videoCodec = NULL;
-	AVCodecContext *audioContext = NULL, *videoContext = NULL;
-	AVOutputFormat * outFormat = NULL;
-	AVInputFormat * inFormat = NULL;
-	SwsContext *swsContext = NULL;
-	int audioStream = -1, videoStream = -1;
 
+	// file I/O context: demuxers read a media file and split it into chunks of data (packets)
 	rec = avformat_open_input(&inContext, filename, NULL, NULL);
 	if (rec != 0)
 		return rec;
 
+	// read packets of a media file to get stream information
 	rec = avformat_find_stream_info(inContext, NULL);
 	if (rec != 0)
 		return rec;
 
 	for (unsigned int s = 0; s < inContext->nb_streams; ++s)
 	{
+		//show information metadata
 		av_dump_format(inContext, s, filename, FALSE);
+
+		// find video stream
 		if (inContext->streams[s]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO && audioStream < 0)
 		{
 			audioStream = s;
 		}
+
+		// find audio stream
 		else if (inContext->streams[s]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO && videoStream < 0)
 		{
 			videoStream = s;
@@ -56,12 +65,94 @@ int ffmpeg::OpenUrl(char * filename)
 
 	if (audioStream > 0)
 	{
-
+		setupAudioCodex(audioStream);
 	}
 	
 	if (videoStream > 0)
 	{
-
+		setupVideoCodex(videoStream);
 	}
 	return rec;
+}
+
+int ffmpeg::setupAudioCodex(int audioStream)
+{
+	// retrieve audio codec
+	audioCodec = avcodec_find_decoder(inContext->streams[audioStream]->codecpar->codec_id);
+	if (!audioCodec)
+		return -1;
+
+	// retrieve audio codec context
+	audioContext = avcodec_alloc_context3(audioCodec);
+	if (!audioContext) 
+		return -1;
+
+	//copy codec context
+	rec = avcodec_parameters_to_context(audioContext, inContext->streams[audioStream]->codecpar);
+	if (rec != 0)
+		return rec;
+
+	//open codec context
+	rec = avcodec_open2(audioContext, audioCodec, NULL);
+	if (rec != 0)
+		return rec;
+
+	//struct setup for audio
+	swrContext = swr_alloc();
+	if (!swrContext)
+		return -1;
+
+	//setup audio parameter
+	av_opt_set_channel_layout(swrContext, "in_channel_layout", audioContext->channel_layout, 0);
+	av_opt_set_channel_layout(swrContext, "out_channel_layout", audioContext->channel_layout, 0);
+	av_opt_set_int(swrContext, "in_sample_rate", audioContext->sample_rate, 0);
+	av_opt_set_int(swrContext, "out_sample_rate", audioContext->sample_rate, 0);
+	av_opt_set_sample_fmt(swrContext, "in_sample_fmt", audioContext->sample_fmt, 0);
+	av_opt_set_sample_fmt(swrContext, "out_sample_fmt", AV_SAMPLE_FMT_FLT, 0);
+
+	rec = swr_init(swrContext);
+	if (rec != 0)
+		return rec;
+
+	return 0;
+}
+
+int ffmpeg::setupVideoCodex(int videoStream)
+{
+	// retrieve video codec
+	videoCodec = avcodec_find_decoder(inContext->streams[videoStream]->codecpar->codec_id);
+	if (!videoCodec)
+		return -1;
+
+	// retrieve video codec context
+	videoContext = avcodec_alloc_context3(videoCodec);
+	if (!videoContext)
+		return -1;
+
+	//copy codec context
+	rec = avcodec_parameters_to_context(videoContext, inContext->streams[videoStream]->codecpar);
+	if (rec != 0)
+		return rec;
+
+	//open codec context
+	rec = avcodec_open2(videoContext, videoCodec, NULL);
+	if (rec != 0)
+		return rec;
+
+	//struct setup for video 
+	//setup SWSContext to convert the image data
+	swsContext = sws_getContext(videoContext->width,
+		videoContext->height,
+		videoContext->pix_fmt,
+		videoContext->width,
+		videoContext->height,
+		AV_PIX_FMT_RGB24,
+		SWS_BILINEAR,
+		NULL,
+		NULL,
+		NULL);
+
+	if (!swsContext)
+		return -1;
+	return 0;
 }

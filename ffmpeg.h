@@ -1,5 +1,5 @@
 #pragma once
-
+#include <stdio.h>
 #ifdef __cplusplus
 extern "C"
 {
@@ -28,9 +28,19 @@ public:
 	ffmpeg();
 	~ffmpeg();
 
-	static void initffmpeg();
-	static int OpenUrl(char *filename);
-	
-
+	 void initffmpeg();
+	 int OpenUrl(char *filename);
+	 int setupAudioCodex(int);
+	 int setupVideoCodex(int);
+private:
+	int rec;
+	AVFormatContext * inContext, *outContext;
+	AVCodec *audioCodec, *videoCodec;
+	AVCodecContext *audioContext, *videoContext;
+	AVOutputFormat * outFormat;
+	AVInputFormat * inFormat;
+	SwsContext *swsContext;
+	SwrContext *swrContext;
+	int audioStream,videoStream;
 };
 
