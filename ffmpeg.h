@@ -32,6 +32,9 @@ public:
 	 int OpenUrl(char *filename);
 	 int setupAudioCodex(int);
 	 int setupVideoCodex(int);
+	 int decodeAudio(AVCodecContext *dec_ctx, AVFrame *frame, AVPacket *pkt);
+	 int decodeVideo(AVCodecContext *dec_ctx, AVFrame *frame, AVPacket *pkt);
+
 private:
 	int rec;
 	AVFormatContext * inContext, *outContext;
@@ -42,5 +45,9 @@ private:
 	SwsContext *swsContext;
 	SwrContext *swrContext;
 	int audioStream,videoStream;
+	AVFrame *pFrame, *pFrameRGB;
+	uint8_t *frameBuffer;
+	int numBytes, pwidth, pheight;
+	int iVideo, iAudio;
 };
 

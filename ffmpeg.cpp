@@ -7,6 +7,24 @@ ffmpeg::ffmpeg()
 
 ffmpeg::~ffmpeg()
 {
+	if (frameBuffer)
+		av_free(frameBuffer);
+	if (pFrame)
+		av_frame_free(&pFrame);
+	if (pFrameRGB)
+		av_frame_free(&pFrameRGB);
+	if (videoContext)
+		avcodec_close(videoContext);
+	if (audioContext)
+		avcodec_close(audioContext);
+	if (swsContext)
+		sws_freeContext(swsContext);
+	if (swrContext)
+		swr_free(&swrContext);
+	if (inContext)
+		avformat_close_input(&inContext);
+	if (outContext)
+		avformat_free_context(outContext);
 }
 
 void ffmpeg::initffmpeg()
@@ -25,6 +43,7 @@ void ffmpeg::initffmpeg()
 	outFormat = NULL;
 	inFormat = NULL;
 	swsContext = NULL;
+	swrContext = NULL;
 	audioStream = -1;
 	videoStream = -1;
 }
@@ -72,6 +91,7 @@ int ffmpeg::OpenUrl(char * filename)
 	{
 		setupVideoCodex(videoStream);
 	}
+
 	return rec;
 }
 
@@ -114,6 +134,10 @@ int ffmpeg::setupAudioCodex(int audioStream)
 	if (rec != 0)
 		return rec;
 
+	if (audioCodec)
+	{
+
+	}
 	return 0;
 }
 
@@ -154,5 +178,63 @@ int ffmpeg::setupVideoCodex(int videoStream)
 
 	if (!swsContext)
 		return -1;
+	if (videoCodec)
+	{
+		pwidth = inContext->streams[videoStream]->codecpar->width;
+		pheight = inContext->streams[videoStream]->codecpar->height;
+
+		pFrame = av_frame_alloc();
+		if (!pFrame)
+			return -1;
+
+		pFrameRGB = av_frame_alloc();
+		if (!pFrameRGB)
+			return -1;
+
+		numBytes = av_image_get_buffer_size(AV_PIX_FMT_RGB24, pwidth, pheight, 8);
+
+		if (numBytes < 1)
+		{
+			rec = numBytes;
+			return rec;
+		}
+
+		frameBuffer = (uint8_t*)av_malloc(numBytes);
+		if (!frameBuffer)
+			return -1;
+
+		rec = av_image_fill_arrays(&pFrameRGB->data[0], &pFrameRGB->linesize[0], frameBuffer, AV_PIX_FMT_RGB24, pwidth, pheight, 1);
+		if (rec < 0)
+			return rec;
+	}
 	return 0;
 }
+
+int ffmpeg::decodeAudio(AVCodecContext * dec_ctx, AVFrame * frame, AVPacket * pkt)
+{
+	return 0;
+}
+
+int ffmpeg::decodeVideo(AVCodecContext * dec_ctx, AVFrame * frame, AVPacket * pkt)
+{
+	if (pkt->stream_index == videoStream)
+	{
+		rec = avcodec_send_packet(dec_ctx, pkt);
+		if (rec)
+			return rec;
+
+		while (!avcodec_receive_frame(dec_ctx, pFrame))
+		{
+			sws_scale(swsContext,
+				pFrame->data,
+				pFrame->linesize,
+				0,
+				dec_ctx->height,
+				pFrameRGB->data,
+				pFrameRGB->linesize);
+
+			++iVideo;
+		}
+	return 0;
+}
+
