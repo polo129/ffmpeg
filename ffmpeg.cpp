@@ -46,6 +46,8 @@ void ffmpeg::initffmpeg()
 	swrContext = NULL;
 	audioStream = -1;
 	videoStream = -1;
+	pFrame = NULL;
+	pFrameRGB = NULL;
 }
 
 int ffmpeg::OpenUrl(char * filename)
@@ -64,7 +66,7 @@ int ffmpeg::OpenUrl(char * filename)
 	for (unsigned int s = 0; s < inContext->nb_streams; ++s)
 	{
 		//show information metadata
-		av_dump_format(inContext, s, filename, FALSE);
+		av_dump_format(inContext, s, filename, false);
 
 		// find video stream
 		if (inContext->streams[s]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO && audioStream < 0)
@@ -82,12 +84,12 @@ int ffmpeg::OpenUrl(char * filename)
 	if (audioStream < 0 && videoStream < 0) 
 		return -1;
 
-	if (audioStream > 0)
+	if (audioStream >= 0)
 	{
 		setupAudioCodex(audioStream);
 	}
 	
-	if (videoStream > 0)
+	if (videoStream >= 0)
 	{
 		setupVideoCodex(videoStream);
 	}
@@ -212,29 +214,81 @@ int ffmpeg::setupVideoCodex(int videoStream)
 
 int ffmpeg::decodeAudio(AVCodecContext * dec_ctx, AVFrame * frame, AVPacket * pkt)
 {
-	return 0;
-}
-
-int ffmpeg::decodeVideo(AVCodecContext * dec_ctx, AVFrame * frame, AVPacket * pkt)
-{
-	if (pkt->stream_index == videoStream)
-	{
 		rec = avcodec_send_packet(dec_ctx, pkt);
 		if (rec)
 			return rec;
 
 		while (!avcodec_receive_frame(dec_ctx, pFrame))
 		{
-			sws_scale(swsContext,
-				pFrame->data,
-				pFrame->linesize,
-				0,
-				dec_ctx->height,
-				pFrameRGB->data,
-				pFrameRGB->linesize);
-
-			++iVideo;
+			printf(
+				"audio #### Frame \n"
+			);
 		}
 	return 0;
+}
+
+int ffmpeg::decodeVideo(AVCodecContext * dec_ctx, AVFrame * frame, AVPacket * pkt)
+{
+	rec = avcodec_send_packet(dec_ctx, pkt);
+	if (rec < 0)
+	{
+		printf("Error sending packet for decoding.\n");
+		return -1;
+	}
+
+	while (rec >= 0)
+	{
+		rec = avcodec_receive_frame(dec_ctx, pFrame);
+
+		if (rec == AVERROR(EAGAIN) || rec == AVERROR_EOF)
+		{
+			return -1;
+		}
+		else if (rec < 0)
+		{
+			printf("Error while decoding.\n");
+			return -1;
+		}
+
+		sws_scale(swsContext,
+			pFrame->data,
+			pFrame->linesize,
+			0,
+			dec_ctx->height,
+			pFrameRGB->data,
+			pFrameRGB->linesize);
+
+
+			printf(
+				"Frame %c (%d) pts %d dts %d key_frame %d [coded_picture_number %d, display_picture_number %d, %dx%d]\n",
+				av_get_picture_type_char(pFrame->pict_type),
+				dec_ctx->frame_number,
+				pFrame->pts,
+				pFrame->pkt_dts,
+				pFrame->key_frame,
+				pFrame->coded_picture_number,
+				pFrame->display_picture_number,
+				dec_ctx->width,
+				dec_ctx->height
+			);
+	
+	}
+	return 0;
+}
+
+void ffmpeg::decode()
+{
+	AVPacket packet;
+	while (av_read_frame(inContext, &packet) >= 0)
+	{
+		if (packet.stream_index == videoStream)
+		{
+			decodeVideo(videoContext, pFrame, &packet);
+		}
+		else if (packet.stream_index == audioStream)
+		{
+			decodeAudio(audioContext, pFrame, &packet);
+		}
+	}
 }
 

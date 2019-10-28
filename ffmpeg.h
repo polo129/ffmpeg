@@ -1,5 +1,7 @@
 #pragma once
 #include <stdio.h>
+#define __STDC_CONSTANT_MACROS
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -13,11 +15,7 @@ extern "C"
 #include <libswresample/swresample.h>
 #include <libswscale/swscale.h>
 
-#include <SDL2\include\SDL.h>
-#include <SDL2\include\SDL_thread.h>
-#include <SDL2\include\SDL_syswm.h>
-#include <SDL2\include\SDL_render.h>
-#include <SDL2\include\SDL_audio.h>
+
 #ifdef __cplusplus
 }
 #endif
@@ -34,6 +32,7 @@ public:
 	 int setupVideoCodex(int);
 	 int decodeAudio(AVCodecContext *dec_ctx, AVFrame *frame, AVPacket *pkt);
 	 int decodeVideo(AVCodecContext *dec_ctx, AVFrame *frame, AVPacket *pkt);
+	 void decode();
 
 private:
 	int rec;
